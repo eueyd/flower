@@ -1,0 +1,30 @@
+# 你的特定排除项
+flowers/
+*.pth
+*.npy
+
+# Python通用排除
+__pycache__/
+*.py[cod]
+*.pyc
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+flowers/
+*.pth
+*.npy
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
