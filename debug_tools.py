@@ -176,3 +176,49 @@ def test_basic_functionality(device):
     print("=" * 60)
 
     return True
+
+
+# 添加一个新的检查函数到debug_tools.py
+def check_pretrained_model(model_path):
+    """检查预训练模型"""
+    print(f"\n🔍 检查预训练模型: {model_path}")
+
+    if not os.path.exists(model_path):
+        print("❌ 模型文件不存在")
+        return None
+
+    try:
+        checkpoint = torch.load(model_path, map_location='cpu')
+
+        print("✅ 模型加载成功")
+        print(f"文件大小: {os.path.getsize(model_path) / 1024 / 1024:.2f} MB")
+
+        if 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+            print(f"参数数量: {len(state_dict)}")
+
+            # 打印前几个键
+            print("\n参数键示例:")
+            for i, key in enumerate(list(state_dict.keys())[:10]):
+                print(f"  {i + 1}. {key}: {state_dict[key].shape}")
+
+            # 检查是否有分类器
+            classifier_keys = [k for k in state_dict.keys() if 'classifier' in k or 'fc' in k]
+            if classifier_keys:
+                print(f"\n分类器层 ({len(classifier_keys)}个):")
+                for key in classifier_keys:
+                    print(f"  {key}: {state_dict[key].shape}")
+
+        if 'config' in checkpoint:
+            print(f"\n模型配置:")
+            for key, value in checkpoint['config'].items():
+                print(f"  {key}: {value}")
+
+        if 'best_test_acc' in checkpoint:
+            print(f"\n历史最佳准确率: {checkpoint['best_test_acc']:.4f}")
+
+        return checkpoint
+
+    except Exception as e:
+        print(f"❌ 检查失败: {e}")
+        return None

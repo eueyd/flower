@@ -174,12 +174,15 @@ class ImprovedDualPathModel(nn.Module):
         if backbone_name == 'resnet18':
             backbone = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
             layer_channels = [64, 128, 256, 512]
+            self.global_feat_dim = 512  # 添加这个
         elif backbone_name == 'resnet34':
             backbone = models.resnet34(weights=models.ResNet34_Weights.IMAGENET1K_V1)
             layer_channels = [64, 128, 256, 512]
+            self.global_feat_dim = 512
         elif backbone_name == 'resnet50':
             backbone = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
             layer_channels = [256, 512, 1024, 2048]
+            self.global_feat_dim = 2048  # ResNet50的特征维度
         else:
             raise ValueError(f"Unsupported backbone: {backbone_name}")
 
@@ -255,7 +258,7 @@ class ImprovedDualPathModel(nn.Module):
         ])
 
         self.gradient_amplifier = nn.Identity()
-        self.global_projection = nn.Linear(512, 128)
+        self.global_projection = nn.Linear(self.global_feat_dim, 128)
         self.global_projection_norm = nn.LayerNorm(128)  # 添加归一化层
         # 初始化
         self._initialize_weights()
