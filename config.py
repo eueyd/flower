@@ -7,15 +7,15 @@
 MODEL_PATH = "best_flower_finegrained.pth"
 METRICS_PATH = "finegrained_metrics.npy"
 NUM_CLASSES = 102
-BATCH_SIZE = 8
-EPOCHS = 25
-LEARNING_RATE = 3e-4
+BATCH_SIZE = 16
+EPOCHS = 50
+LEARNING_RATE = 1e-3
 IMAGE_SIZE = (224, 224)
 NUM_REGIONS = 2
 
 # 损失权重
-LAMBDA_GLOBAL = 0.5  # 全局损失权重
-LAMBDA_REGION = 0.3  # 区域损失权重
+LAMBDA_GLOBAL = 0.2  # 全局损失权重
+LAMBDA_REGION = 0.1  # 区域损失权重
 
 # 数据路径
 BASE_DIR = "flowers102_data"

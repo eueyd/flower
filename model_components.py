@@ -104,18 +104,24 @@ class AdaptiveFusionModule(nn.Module):
         self.num_regions = num_regions
         self.global_dim = global_dim
         self.region_dim = region_dim
+        self.input_dim = region_dim * (1 + num_regions)  # 192
 
         self.global_proj = nn.Linear(global_dim, region_dim)
 
+        # 注意力网络
         self.attention = nn.Sequential(
-            nn.Linear(region_dim * (1 + num_regions), hidden_dim),
+            nn.Linear(self.input_dim, hidden_dim),
             nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, 1 + num_regions),
             nn.Softmax(dim=1)
         )
 
+        # 加权特征投影层 - 新增！
+        self.weighted_expansion = nn.Linear(region_dim, self.input_dim)
+
+        # 融合网络
         self.fusion = nn.Sequential(
-            nn.Linear(region_dim * (1 + num_regions), hidden_dim),
+            nn.Linear(self.input_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.ReLU(inplace=True),
             nn.Dropout(0.3),
@@ -123,22 +129,31 @@ class AdaptiveFusionModule(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, 128)
         )
+        self.gate_proj = nn.Linear(region_dim, self.input_dim)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, global_feat, region_feats):
         global_feat_proj = self.global_proj(global_feat)
-
         all_feats = [global_feat_proj] + region_feats
         concatenated = torch.cat(all_feats, dim=1)
 
         weights = self.attention(concatenated)
 
-        weighted_feats = weights[:, 0:1] * global_feat_proj
+        # 加权融合
+        weighted_sum = weights[:, 0:1] * global_feat_proj
         for i in range(self.num_regions):
-            weighted_feats = weighted_feats + weights[:, i + 1:i + 2] * region_feats[i]
+            weighted_sum = weighted_sum + weights[:, i + 1:i + 2] * region_feats[i]
 
-        fused_feature = self.fusion(concatenated)
+        # 方法2：线性投影加权特征，然后增强原始特征
+        expanded_weighted = self.weighted_expansion(weighted_sum)
+        gate = self.sigmoid(self.gate_proj(weighted_sum))  # 生成门控信号
+
+        # 增强原始特征：加权特征作为偏置加到原始特征上
+        enhanced = concatenated * gate + expanded_weighted * (1 - gate)  # 门控融合
+
+        fused_feature = self.fusion(enhanced)
+
         return fused_feature, weights
-
 
 class ImprovedDualPathModel(nn.Module):
     """改进的双路径模型"""
@@ -151,13 +166,13 @@ class ImprovedDualPathModel(nn.Module):
 
         # 骨干网络
         if backbone_name == 'resnet18':
-            backbone = models.resnet18(pretrained=True)
+            backbone = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
             layer_channels = [64, 128, 256, 512]
         elif backbone_name == 'resnet34':
-            backbone = models.resnet34(pretrained=True)
+            backbone = models.resnet34(weights=models.ResNet34_Weights.IMAGENET1K_V1)
             layer_channels = [64, 128, 256, 512]
         elif backbone_name == 'resnet50':
-            backbone = models.resnet50(pretrained=True)
+            backbone = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
             layer_channels = [256, 512, 1024, 2048]
         else:
             raise ValueError(f"Unsupported backbone: {backbone_name}")
@@ -235,6 +250,7 @@ class ImprovedDualPathModel(nn.Module):
 
         # 初始化
         self._initialize_weights()
+        self._verify_trainability()
 
     def _initialize_weights(self):
         """初始化权重"""
@@ -351,3 +367,10 @@ class ImprovedDualPathModel(nn.Module):
         }
 
         return total_loss, loss_details
+
+    def _verify_trainability(self):
+        """验证所有模块是否可训练"""
+        print(f"\\n🔍 训练性检查:")
+        for name, param in self.named_parameters():
+            if not param.requires_grad:
+                print(f"  ⚠️ {name}: 被冻结 (requires_grad=False)")
