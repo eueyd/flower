@@ -45,29 +45,31 @@ def train_model(device, model_path=MODEL_PATH, metrics_path=METRICS_PATH):
     # 优化器
     optimizer = optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()),
-        lr=LEARNING_RATE
+        lr=0.0001,
+        weight_decay=1e-5
     )
-    warmup_epochs = 3  # 预热1个epoch（约63个batch）
-    warmup_factor = 10.0  # 预热期学习率放大10倍（1e-3 → 1e-2）
+    # warmup_epochs = 3  # 预热1个epoch（约63个batch）
+    # warmup_factor = 10.0  # 预热期学习率放大10倍（1e-3 → 1e-2）
 
-    def warmup_lr_scheduler(epoch, batch_idx, total_batches):
-        """动态调整学习率"""
-        total_warmup_steps = warmup_epochs * total_batches  # 总共的预热步数
-        current_step = epoch * total_batches + batch_idx
-
-        if current_step < total_warmup_steps:
-            # 线性预热：从0到1e-2
-            alpha = current_step / total_warmup_steps
-            warmup_lr = LEARNING_RATE * warmup_factor * alpha
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = warmup_lr
-        else:
+    # def warmup_lr_scheduler(epoch, batch_idx, total_batches):
+    #     """动态调整学习率"""
+    #     total_warmup_steps = warmup_epochs * total_batches  # 总共的预热步数
+    #     current_step = epoch * total_batches + batch_idx
+    #
+    #     if current_step < total_warmup_steps:
+    #         # 线性预热：从0到1e-2
+    #         alpha = current_step / total_warmup_steps
+    #         warmup_lr = LEARNING_RATE * warmup_factor * alpha
+    #         for param_group in optimizer.param_groups:
+    #             param_group['lr'] = warmup_lr
+    #     else:
             # 预热结束，使用正常学习率
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = LEARNING_RATE
+            # for param_group in optimizer.param_groups:
+            #     param_group['lr'] = LEARNING_RATE
 
 
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.5)
+
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.93)
 
     # 损失函数
     criterion = nn.CrossEntropyLoss()
@@ -91,8 +93,6 @@ def train_model(device, model_path=MODEL_PATH, metrics_path=METRICS_PATH):
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} [Train]")
         for batch_idx, (images, labels) in enumerate(pbar):
-            # 学习率预热（在每个batch开始前）
-            warmup_lr_scheduler(epoch, batch_idx, len(train_loader))
             # 定期清理缓存
             if batch_idx % 20 == 0:
                 torch.cuda.empty_cache()
@@ -112,7 +112,7 @@ def train_model(device, model_path=MODEL_PATH, metrics_path=METRICS_PATH):
             # 梯度裁剪
             torch.nn.utils.clip_grad_norm_(
                 filter(lambda p: p.requires_grad, model.parameters()),
-                max_norm=1.0
+                max_norm=0.5
             )
 
             optimizer.step()

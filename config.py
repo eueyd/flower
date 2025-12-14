@@ -9,13 +9,14 @@ METRICS_PATH = "finegrained_metrics.npy"
 NUM_CLASSES = 102
 BATCH_SIZE = 16
 EPOCHS = 50
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 0.004  # 直接设为0.04
+warmup_factor = 1.0   # 不预热放大
 IMAGE_SIZE = (224, 224)
 NUM_REGIONS = 2
 
 # 损失权重
-LAMBDA_GLOBAL = 0.2  # 全局损失权重
-LAMBDA_REGION = 0.1  # 区域损失权重
+LAMBDA_GLOBAL = 0.1  # 全局损失权重
+LAMBDA_REGION = 0.05  # 区域损失权重
 
 # 数据路径
 BASE_DIR = "flowers102_data"

@@ -107,7 +107,7 @@ class AdaptiveFusionModule(nn.Module):
         self.input_dim = region_dim * (1 + num_regions)  # 192
 
         self.global_proj = nn.Linear(global_dim, region_dim)
-
+        self.global_norm = nn.LayerNorm(region_dim)  # 预定义归一化层
         # 注意力网络
         self.attention = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
@@ -118,7 +118,7 @@ class AdaptiveFusionModule(nn.Module):
 
         # 加权特征投影层 - 新增！
         self.weighted_expansion = nn.Linear(region_dim, self.input_dim)
-
+        self.weighted_norm = nn.LayerNorm(self.input_dim)  # 预定义归一化层
         # 融合网络
         self.fusion = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
@@ -131,9 +131,12 @@ class AdaptiveFusionModule(nn.Module):
         )
         self.gate_proj = nn.Linear(region_dim, self.input_dim)
         self.sigmoid = nn.Sigmoid()
+        self.norm_global = nn.LayerNorm(region_dim)
+        self.norm_weighted = nn.LayerNorm(self.input_dim)
 
     def forward(self, global_feat, region_feats):
-        global_feat_proj = self.global_proj(global_feat)
+        global_feat_proj = self.global_norm(self.global_proj(global_feat))  # 使用预定义归一化层
+        # global_feat_proj = self.norm_global(self.global_proj(global_feat))
         all_feats = [global_feat_proj] + region_feats
         concatenated = torch.cat(all_feats, dim=1)
 
@@ -144,8 +147,11 @@ class AdaptiveFusionModule(nn.Module):
         for i in range(self.num_regions):
             weighted_sum = weighted_sum + weights[:, i + 1:i + 2] * region_feats[i]
 
+
         # 方法2：线性投影加权特征，然后增强原始特征
         expanded_weighted = self.weighted_expansion(weighted_sum)
+        expanded_weighted = self.weighted_norm(expanded_weighted)  # 使用预定义归一化层
+
         gate = self.sigmoid(self.gate_proj(weighted_sum))  # 生成门控信号
 
         # 增强原始特征：加权特征作为偏置加到原始特征上
@@ -229,14 +235,14 @@ class ImprovedDualPathModel(nn.Module):
         )
 
         self.final_classifier = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.LayerNorm(64),
+            nn.Linear(256, 128),
+            nn.LayerNorm(128),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-            nn.Linear(64, 32),
+            nn.Linear(128, 64),
             nn.ReLU(inplace=True),
             nn.Dropout(0.2),
-            nn.Linear(32, num_classes)
+            nn.Linear(64, num_classes)
         )
 
         # 区域分类器（辅助监督）
@@ -248,6 +254,9 @@ class ImprovedDualPathModel(nn.Module):
             ) for _ in range(num_regions)
         ])
 
+        self.gradient_amplifier = nn.Identity()
+        self.global_projection = nn.Linear(512, 128)
+        self.global_projection_norm = nn.LayerNorm(128)  # 添加归一化层
         # 初始化
         self._initialize_weights()
         self._verify_trainability()
@@ -263,6 +272,10 @@ class ImprovedDualPathModel(nn.Module):
             elif isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, 0, 0.01)
                 nn.init.constant_(m.bias, 0)
+
+        if hasattr(self, 'global_projection'):
+            nn.init.normal_(self.global_projection.weight, 0, 0.001)
+            nn.init.constant_(self.global_projection.bias, 0)
 
     def extract_features(self, x):
         """提取多尺度特征"""
@@ -323,15 +336,22 @@ class ImprovedDualPathModel(nn.Module):
         # 自适应特征融合
         final_feature, fusion_weights = self.adaptive_fusion(global_feat, region_features)
 
+        amplified_feature = final_feature * 2.0  # α=2.0的放大器
+
+        projected_global = self.global_projection(global_feat)  # 投影全局特征
+        # projected_global = nn.LayerNorm(projected_global.size(-1))(projected_global)  # 添加层归一化
+        enhanced_feature = torch.cat([final_feature * 2.0, projected_global], dim=1)
         # 分类输出
         global_logits = self.global_classifier(global_feat)
-        final_logits = self.final_classifier(final_feature)
+        final_logits = self.final_classifier(enhanced_feature)
+
 
         outputs = {
             'final_logits': final_logits,
             'global_logits': global_logits,
             'region_logits': torch.stack(region_logits, dim=1) if region_logits else None,
             'fused_feature': final_feature,
+            'amplified_feature': amplified_feature,
             'fusion_weights': fusion_weights,
             'attention_maps': attention_maps_full,
             'global_feature': global_feat
